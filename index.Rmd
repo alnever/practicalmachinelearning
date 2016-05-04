@@ -1,0 +1,193 @@
+---
+title: "Practical Machine Leraning"
+author: "Aleksei Neverov"
+date: '4 мая 2016 г '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(caret)
+library(rattle)
+library(rpart.plot)
+library(knitr)
+## library(doParallel)
+## cl <- makeCluster(detectCores())
+## registerDoParallel(cl)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data loading and explorary analisys
+
+```{r}
+if (! file.exists("pml-training.csv")) {
+      url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv" 
+      download.file(url,"pml-training.csv")
+}
+
+trainingFull <- read.csv("pml-training.csv")
+```
+
+
+## Data processin
+
+```{r}
+set.seed(753)
+
+trainingFull <- trainingFull[,-(1:7)]
+inTrain <- createDataPartition(trainingFull$classe, p = 0.6, list = FALSE)
+training <- trainingFull[inTrain,]
+validate <- trainingFull[-inTrain,]
+```
+
+
+```{r}
+### Remove NAs
+### persentage of NAs in columns
+colnas <- apply(training, 2, function(x) mean(is.na(x)) <= .5)
+### persentage of columns having more 50% NAs
+mean(colnas > .5)
+training <- training[,colnas]
+validate <- validate[,colnas]
+dim(training)
+dim(validate)
+```
+
+```{r}
+## Remove nsv
+
+nsv <- nearZeroVar(training,saveMetrics=TRUE)
+head(nsv)
+training <- training[,!nsv$nzv]
+validate <- validate[,!nsv$nzv]
+dim(training)
+dim(validate)
+```
+
+## Training model
+
+```{r}
+############# Tree prediction ###########################
+
+rpartModel <- train(classe ~ .,method="rpart", data=training)
+rpartModel
+
+fancyRpartPlot(rpartModel$finalModel)
+
+predictTrain1 <- predict(rpartModel,newdata = training)
+confusionMatrix(predictTrain1, training$classe)
+
+predictValidate1 <- predict(rpartModel,newdata = validate)
+confusionMatrix(predictValidate1, validate$classe)
+```
+
+```{r}
+####################### LDA prediction ######################
+
+ldaModel <- train(classe ~ .,method="lda2", data=training)
+ldaModel
+
+predictTrain2 <- predict(ldaModel,newdata = training)
+confusionMatrix(predictTrain2, training$classe)
+
+predictValidate2 <- predict(ldaModel,newdata = validate)
+confusionMatrix(predictValidate2, validate$classe)
+```
+
+```{r}
+######################## PCA prediction + LDA ##################
+
+n <- length(names(training))
+preProc <- preProcess(training[,-n],method=c("pca"),pcaComp=7)
+trainingPC <- predict(preProc,training[,-n])
+classe <- training$classe 
+trainingPC <- cbind(trainingPC, classe)
+validatePC <- predict(preProc,validate[,-n])
+classe <- validate$classe 
+validatePC <- cbind(validatePC, classe)
+
+pcaModel <- train(classe ~ .,method="lda", data=trainingPC)
+pcaModel
+
+predictTrain3 <- predict(pcaModel,newdata = trainingPC)
+confusionMatrix(predictTrain3, training$classe)
+
+predictValidate3 <- predict(pcaModel,newdata = validatePC)
+confusionMatrix(predictValidate3, validate$classe)
+```
+
+```{r}
+##################### Cross-validation ####################### 99,7%
+
+set.seed(753)
+
+# We choose a cross-validation of 4-folds instead of bootstrap default method for
+# gradient boosting model (gbm) in order to speed up training.
+
+fitControl <- trainControl(method = "cv", number = 4)
+
+# We provide additionnal parameters to gbm, not far from default ones
+
+gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9),
+                        n.trees = (1:15)*100,
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+## system.time(
+cvModel <- train(classe ~. ,data = training ,method="gbm" ,trControl = fitControl ,verbose = FALSE,tuneGrid = gbmGrid)
+
+predictTrain4 <- predict(cvModel,newdata = training)
+confusionMatrix(predictTrain4, training$classe)
+
+predictValidate4 <- predict(cvModel,newdata = validate)
+confusionMatrix(predictValidate4, validate$classe)
+```
+
+```{r}
+################ Random forest ####################### 99,3%
+
+set.seed(753)
+
+rfModel <- train(classe ~ .,method="rf", data=training)
+rfModel
+
+predictTrain5 <- predict(rfModel,newdata = training)
+confusionMatrix(predictTrain5, training$classe)
+
+predictValidate5 <- predict(rfModel,newdata = validate)
+confusionMatrix(predictValidate5, validate$classe)
+```
+
+## Prediction on testing dataset
+
+```{r}
+############## Load and prepare testing dataset ##############################
+
+if (! file.exists("pml-testing.csv")) {
+      url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv" 
+      download.file(url,"pml-testing.csv")
+}
+
+testing <- read.csv("pml-testing.csv")
+
+# testing <- testing[,-160]
+testing <- testing[,-(1:7)]
+testing <- testing[,colnas]
+testing <- testing[,!nsv$nzv]
+
+dim(testing)
+```
+
+```{r}
+## Prediction for testing dataset with random forest
+predictTest6 <- predict(rfModel,newdata = testing)
+# confusionMatrix(predictTest6, testing$classe)
+predictTest6
+
+## Prediction for testing dataset with cross-validation model
+predictTest7 <- predict(cvModel,newdata = testing)
+# confusionMatrix(predictTest7, testing$classe)
+predictTest7
+## stopCluster(cl)
+```
+
