@@ -10,9 +10,9 @@ library(caret)
 library(rattle)
 library(rpart.plot)
 library(knitr)
-## library(doParallel)
-## cl <- makeCluster(detectCores())
-## registerDoParallel(cl)
+# library(doParallel)
+# cl <- makeCluster(detectCores())
+
 
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -128,13 +128,15 @@ fitControl <- trainControl(method = "cv", number = 4)
 
 # We provide additionnal parameters to gbm, not far from default ones
 
-gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9),
-                        n.trees = (1:15)*100,
+gbmGrid <-  expand.grid(interaction.depth = 1:3,
+                        n.trees = (1:4)*100,
                         shrinkage = 0.1,
                         n.minobsinnode = 20)
 
-## system.time(
+# registerDoParallel(cl)
 cvModel <- train(classe ~. ,data = training ,method="gbm" ,trControl = fitControl ,verbose = FALSE,tuneGrid = gbmGrid)
+# stopCluster(cl)
+cvModel
 
 predictTrain4 <- predict(cvModel,newdata = training)
 confusionMatrix(predictTrain4, training$classe)
@@ -148,7 +150,10 @@ confusionMatrix(predictValidate4, validate$classe)
 
 set.seed(753)
 
+# registerDoParallel(cl)
 rfModel <- train(classe ~ .,method="rf", data=training)
+# stopCluster(cl)
+
 rfModel
 
 predictTrain5 <- predict(rfModel,newdata = training)
@@ -188,6 +193,6 @@ predictTest6
 predictTest7 <- predict(cvModel,newdata = testing)
 # confusionMatrix(predictTest7, testing$classe)
 predictTest7
-## stopCluster(cl)
+
 ```
 
